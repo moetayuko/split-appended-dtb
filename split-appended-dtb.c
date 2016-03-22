@@ -57,61 +57,68 @@ void *memmem(const void *haystack, size_t n, const void *needle, size_t m)
     return NULL;
 }
 
-void dump_file(FILE *file, uint8_t *head, unsigned long long len)
+int dump_file(FILE *file, uint8_t *head, unsigned long long len)
 {
-    fwrite(head, len, 1, file);
+    return fwrite(head, len, 1, file);
 }
 
 int split(char *kernel_image)
 {
-    FILE *fpinput = NULL, *fpoutput = NULL;
+    FILE *fp = NULL;
     int dtb_count = 0, complete = 0, rc = 0;
     unsigned long long kernel_size = 0, len = 0;
     char outfile[20];
     uint8_t *kernel, *kernel_end, *dtb_head, *dtb_next;
 
-    fpinput = fopen(kernel_image, "rb");
-    if (fpinput == NULL)
+    fp = fopen(kernel_image, "rb");
+    if (fp == NULL)
     {
         printf("Open %s failed!\n", kernel_image);
         return 1;
     }
 
-    // get kernel size
-    fseek(fpinput, 0, SEEK_END);
-    kernel_size = ftell(fpinput);
-    fseek(fpinput, 0, SEEK_SET);
+    // Get kernel size
+    fseek(fp, 0, SEEK_END);
+    kernel_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
 
     kernel = (uint8_t *)malloc(kernel_size * sizeof(uint8_t));
     if (kernel == NULL)
     {
-        printf("Failed to allocate memory for kernel\n");
+        printf("Failed to allocate memory!\n");
         goto err;
     }
     kernel_end = kernel + kernel_size;
 
-    rc = fread(kernel, kernel_size * sizeof(uint8_t), 1, fpinput);
-    fclose(fpinput);
+    rc = fread(kernel, kernel_size * sizeof(uint8_t), 1, fp);
+    fclose(fp);
     if (!rc)
     {
-        printf("Failed to read kernel\n");
+        printf("Failed to read kernel image!\n");
         goto err;
     }
 
+    // Find the first dtb
     dtb_head = memmem(kernel, kernel_size, fdt_magic, sizeof(fdt_magic));
     if (dtb_head == NULL)
     {
-        printf("ERROR: Appended Device Tree Blob not found\n");
+        printf("ERROR: Appended Device Tree Blob not found!\n");
         goto err;
     }
 
     len = dtb_head - kernel;
-    fpoutput = fopen("kernel", "wb");
-    dump_file(fpoutput, kernel, len);
-    fclose(fpoutput);
+    fp = fopen("kernel", "wb");
+    rc = dump_file(fp, kernel, len);
+    fclose(fp);
+    if (!rc)
+    {
+        printf("Failed to dump standalone kernel image!\n");
+        goto err;
+    }
 
     while (!complete)
     {
+        // Find the next dtbs
         len = kernel_end - dtb_head - sizeof(fdt_magic);
         dtb_next = memmem(dtb_head + sizeof(fdt_magic), len, fdt_magic, sizeof(fdt_magic));
         if (dtb_next == NULL)
@@ -120,13 +127,16 @@ int split(char *kernel_image)
             complete = 1;
         }
         else
-        {
             len = dtb_next - dtb_head;
-        }
+
+        // Dump found dtbs
         sprintf(outfile, "dtbdump_%d.dtb", ++dtb_count);
-        fpoutput = fopen(outfile, "wb");
-        dump_file(fpoutput, dtb_head, len);
-        fclose(fpoutput);
+        fp = fopen(outfile, "wb");
+        rc = dump_file(fp, dtb_head, len);
+        fclose(fp);
+        if (!rc)
+            printf("Failed to dump %s!\n", outfile);
+
         dtb_head = dtb_next;
     }
 
