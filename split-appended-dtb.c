@@ -130,7 +130,7 @@ int split(char *kernel_image)
             len = dtb_next - dtb_head;
 
         // Dump found dtbs
-        sprintf(outfile, "dtbdump_%d.dtb", ++dtb_count);
+        sprintf(outfile, "dtbdump_%03d.dtb", ++dtb_count);
         fp = fopen(outfile, "wb");
         rc = dump_file(fp, dtb_head, len);
         fclose(fp);
